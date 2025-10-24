@@ -1,8 +1,9 @@
 import { Type, GenerateContentResponse } from "@google/genai";
 import type { Paper, ComparisonResult, KGData, ComparisonPoint } from '../types';
 
-// NOTE: All direct API initialization (GoogleGenAI, process.env.API_KEY, callApiWithRetry)
-// has been REMOVED from this file. The logic now uses simple fetch to secure endpoints.
+// NOTE: The entire section for direct Gemini client initialization, API key checks,
+// and the callApiWithRetry function has been REMOVED from this file.
+// The logic now uses standard fetch calls to secure Netlify Function endpoints.
 
 const API_FUNCTION_PREFIX = '/.netlify/functions';
 
