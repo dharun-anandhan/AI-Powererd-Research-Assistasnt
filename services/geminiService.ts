@@ -1,11 +1,13 @@
 import { GoogleGenAI, Type, GenerateContentResponse } from "@google/genai";
 import type { Paper, ComparisonResult, KGData, ComparisonPoint } from '../types';
 
-if (!process.env.API_KEY) {
-    throw new Error("API_KEY environment variable not set");
+// --- MODIFICATION 1: Change access method and key name ---
+if (!import.meta.env.VITE_API_KEY) {
+    throw new Error("VITE_API_KEY environment variable not set");
 }
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// --- MODIFICATION 2: Initialize with the VITE_ prefixed key ---
+const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_API_KEY });
 
 /**
  * A robust helper to make API calls with automatic retries on overload errors.
@@ -104,11 +106,11 @@ export const deepSemanticSearch = async (query: string, systematic: boolean): Pr
         ${systematic ? "Systematic Review Mode is ON: Prioritize a diverse range of foundational and recent papers to provide a comprehensive overview." : ""}
 
         **CRITICAL INSTRUCTIONS:**
-        1.  Use your search tool to find 5 to 7 highly relevant academic papers.
-        2.  For each paper, you MUST process the information and generate the required fields. **DO NOT copy text directly from the sources.** This is to avoid plagiarism.
-        3.  **Abstract Requirement:** You MUST read the paper's abstract from the source and then **write a new, concise summary of it in your own words.** This summary should capture the key points of the original abstract.
-        4.  **TLDR Requirement:** Generate a new, one-sentence "Too Long; Didn't Read" (TLDR) summary for each paper.
-        5.  Format your entire output as a single, valid JSON array of objects. Your response must begin with '[' and end with ']'. Do not include any other text, explanations, or markdown.
+        1. 	Use your search tool to find 5 to 7 highly relevant academic papers.
+        2. 	For each paper, you MUST process the information and generate the required fields. **DO NOT copy text directly from the sources.** This is to avoid plagiarism.
+        3. 	**Abstract Requirement:** You MUST read the paper's abstract from the source and then **write a new, concise summary of it in your own words.** This summary should capture the key points of the original abstract.
+        4. 	**TLDR Requirement:** Generate a new, one-sentence "Too Long; Didn't Read" (TLDR) summary for each paper.
+        5. 	Format your entire output as a single, valid JSON array of objects. Your response must begin with '[' and end with ']'. Do not include any other text, explanations, or markdown.
 
         **JSON Object Structure for each paper:**
         {
@@ -205,7 +207,7 @@ export const comparePapers = async (papers: Paper[]): Promise<ComparisonResult> 
                         confidenceScore: { type: Type.NUMBER },
                         sourceSentence: { type: Type.STRING },
                     },
-                     required: ["paperId", "value", "confidenceScore", "sourceSentence"]
+                    required: ["paperId", "value", "confidenceScore", "sourceSentence"]
                 }
             }
         },
