@@ -1,0 +1,5 @@
+{
+  "name": "AI Scholarly Knowledge Discovery System",
+  "description": "A high-fidelity AI system for systematic comparison of multiple research papers using a Retrieval-Augmented Generation (RAG) framework. Features deep semantic search, structured comparison, knowledge graph visualization, and data traceability.",
+  "requestFramePermissions": []
+}
