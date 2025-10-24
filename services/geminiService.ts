@@ -1,43 +1,35 @@
-import { Type, GenerateContentResponse } from "@google/genai";
 import type { Paper, ComparisonResult, KGData, ComparisonPoint } from '../types';
 
-// NOTE: The entire section for direct Gemini client initialization, API key checks,
-// and the callApiWithRetry function has been REMOVED from this file.
-// The logic now uses standard fetch calls to secure Netlify Function endpoints.
-
+// The prefix for all our serverless function endpoints
 const API_FUNCTION_PREFIX = '/.netlify/functions';
 
 /**
- * Helper function to extract a JSON string from a markdown code block.
- * (Retained for parsing Netlify Function response bodies if needed, but simplified)
- * @param text The text response from the model.
- * @returns A clean JSON string.
- */
-const extractJson = (text: string): string => {
-    const match = text.match(/```json\n([\s\S]*?)\n```/);
-    if (match) {
-        return match[1];
-    }
-    const jsonMatch = text.match(/(\[[\s\S]*\]|\{[\s\S]*\})/);
-    return jsonMatch ? jsonMatch[0] : text;
-};
-
-/**
- * A utility to handle the network response from the Netlify Function.
- * @param response The standard Fetch Response object.
- * @returns The parsed JSON body.
+ * A utility to handle the network response from a Netlify Function.
+ * It parses the JSON and throws a user-friendly error if the request failed.
+ * @param response The standard Fetch API Response object.
+ * @returns The parsed JSON body from the function's response.
  */
 const handleNetlifyResponse = async (response: Response): Promise<any> => {
-    const data = await response.json();
+    // Check if the response is empty, which can cause JSON parsing errors
+    const text = await response.text();
+    if (!text) {
+        if (!response.ok) {
+             throw new Error(`Request failed with status ${response.status}: The server returned an empty response.`);
+        }
+        return null; // Handle cases where an empty 2xx response is valid
+    }
+
+    const data = JSON.parse(text);
 
     if (!response.ok) {
         const status = response.status;
-        const details = data.details || data.error || "An unknown serverless error occurred.";
+        // Use the error message provided by the serverless function
+        const details = data.error || "An unknown serverless error occurred.";
         console.error(`Netlify Function Error (${status}):`, details);
 
-        // Throw a user-friendly error based on the status code
+        // Create a more user-friendly error message
         if (status === 503 || status === 429) {
-            throw new Error("The AI service is temporarily overloaded or unavailable. Please try again in a few moments.");
+            throw new Error("The AI service is temporarily overloaded. Please try again in a few moments.");
         }
         throw new Error(`Request failed: ${details}`);
     }
@@ -52,10 +44,7 @@ const handleNetlifyResponse = async (response: Response): Promise<any> => {
  * @returns A promise that resolves to an array of Paper objects.
  */
 export const deepSemanticSearch = async (query: string, systematic: boolean): Promise<Paper[]> => {
-    console.log(`Calling secure search endpoint for "${query}", systematic: ${systematic}`);
-
     const endpoint = `${API_FUNCTION_PREFIX}/deepSemanticSearch`;
-
     try {
         const response = await fetch(endpoint, {
             method: 'POST',
@@ -66,19 +55,16 @@ export const deepSemanticSearch = async (query: string, systematic: boolean): Pr
         const papers = await handleNetlifyResponse(response);
 
         if (!Array.isArray(papers)) {
-            console.error("Endpoint did not return a valid array.", papers);
-            return [];
+            console.error("API function did not return a valid array.", papers);
+            throw new Error("Received invalid data from the server.");
         }
-
-        // Add a simple unique ID if the function doesn't provide one
         return papers.map((paper, index) => ({ ...paper, id: paper.id || `${Date.now()}-${index}` })) as Paper[];
 
     } catch (error) {
-        console.error("Error during deep semantic search:", error);
+        console.error("Error calling deepSemanticSearch function:", error);
         throw error;
     }
 };
-
 
 /**
  * Compares a list of selected papers by calling the secure Netlify Function.
@@ -86,9 +72,7 @@ export const deepSemanticSearch = async (query: string, systematic: boolean): Pr
  * @returns A promise that resolves to a ComparisonResult object.
  */
 export const comparePapers = async (papers: Paper[]): Promise<ComparisonResult> => {
-    console.log(`Calling secure comparison endpoint for ${papers.length} papers.`);
     const endpoint = `${API_FUNCTION_PREFIX}/comparePapers`;
-
     try {
         const response = await fetch(endpoint, {
             method: 'POST',
@@ -98,7 +82,7 @@ export const comparePapers = async (papers: Paper[]): Promise<ComparisonResult> 
 
         const rawResult = await handleNetlifyResponse(response);
 
-        // Transform the data back to the structure the UI expects (Logic retained for client transformation)
+        // The UI expects a different data structure, so we transform it here on the client.
         const transformedComparison = rawResult.comparison.map((aspect: any) => {
             const papersObject: { [paperId: string]: ComparisonPoint } = {};
             aspect.papers.forEach((paperData: any) => {
@@ -120,7 +104,7 @@ export const comparePapers = async (papers: Paper[]): Promise<ComparisonResult> 
         };
 
     } catch (error) {
-        console.error("Error during paper comparison:", error);
+        console.error("Error calling comparePapers function:", error);
         throw error;
     }
 };
@@ -131,19 +115,16 @@ export const comparePapers = async (papers: Paper[]): Promise<ComparisonResult> 
  * @returns A promise that resolves to KGData.
  */
 export const generateKnowledgeGraphData = async (papers: Paper[]): Promise<KGData> => {
-    console.log(`Calling secure knowledge graph endpoint for ${papers.length} papers.`);
     const endpoint = `${API_FUNCTION_PREFIX}/generateKnowledgeGraphData`;
-
     try {
         const response = await fetch(endpoint, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ papers }),
         });
-
         return await handleNetlifyResponse(response);
     } catch (error) {
-        console.error("Error during KG data generation:", error);
+        console.error("Error calling generateKnowledgeGraphData function:", error);
         throw error;
     }
 };
@@ -155,9 +136,7 @@ export const generateKnowledgeGraphData = async (papers: Paper[]): Promise<KGDat
  * @returns A promise that resolves to an array of topic strings.
  */
 export const suggestBroaderTopics = async (query: string, results: Paper[]): Promise<string[]> => {
-    console.log(`Calling secure topic suggestion endpoint.`);
     if (results.length === 0) return [];
-
     const endpoint = `${API_FUNCTION_PREFIX}/suggestBroaderTopics`;
     const paperTitles = results.map(p => p.title).join(', ');
 
@@ -167,10 +146,9 @@ export const suggestBroaderTopics = async (query: string, results: Paper[]): Pro
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ query, paperTitles }),
         });
-
         return await handleNetlifyResponse(response);
     } catch (error) {
-        console.error("Error during topic suggestions:", error);
+        console.error("Error calling suggestBroaderTopics function:", error);
         throw error;
     }
 };
