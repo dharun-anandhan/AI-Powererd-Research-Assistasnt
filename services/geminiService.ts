@@ -72,7 +72,7 @@ export const deepSemanticSearch = async (query: string, systematic: boolean): Pr
  * @returns A promise that resolves to a ComparisonResult object.
  */
 export const comparePapers = async (papers: Paper[]): Promise<ComparisonResult> => {
-    const endpoint = `${API_FUNCTION_PREFIX}/comparePapers`;
+    const endpoint = `${API_FUNCTION_PREFIX}/comparePapers-background`;
     try {
         const response = await fetch(endpoint, {
             method: 'POST',
