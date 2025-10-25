@@ -1,0 +1,57 @@
+# ====================================================================
+# STAGE 1: Build Frontend (Vite/TypeScript)
+# This stage installs dependencies and creates the optimized production bundle.
+# ====================================================================
+FROM node:20-alpine AS build_stage
+
+# Set the working directory
+WORKDIR /app
+
+# Copy package.json and package-lock.json first to leverage Docker layer caching
+# If these files don't change, the RUN npm install step is skipped, speeding up builds.
+COPY package*.json ./
+
+# Install dependencies (including dev dependencies needed for Vite build)
+RUN npm install
+
+# Copy the rest of the application source code (including all components, netlify/functions, etc.)
+COPY . .
+
+# Run the production build command (This creates the 'dist' folder)
+# Your local npm run build runs 'vite build' which outputs to 'dist/'
+RUN npm run build
+
+
+# ====================================================================
+# STAGE 2: Production Runtime (Node.js Server)
+# This stage copies only the built assets and the minimal runtime code.
+# Cloud Run requires the server to listen on the PORT environment variable.
+# ====================================================================
+FROM node:20-slim
+
+# Set the application's working directory
+WORKDIR /usr/src/app
+
+# Set the environment variable required by Cloud Run
+# Cloud Run will automatically set this value for the container.
+ENV PORT 8080
+
+# Expose the port (mostly for documentation/local testing)
+EXPOSE 8080
+
+# Copy the built assets (the frontend SPA) from the first stage's 'dist' folder
+COPY --from=build_stage /app/dist /usr/src/app/dist
+
+# Copy package.json and node_modules (production dependencies only) 
+# Note: You should have a simple Node.js entry file (e.g., index.js or server.js) 
+# in your repository root that uses Express to:
+# 1. Serve files from the '/usr/src/app/dist' folder (your frontend).
+# 2. Route all API calls (/api/*) to your Netlify Functions logic.
+COPY package*.json ./
+RUN npm install --only=production
+COPY index.js .
+COPY server.js .
+
+# Command to start the application server
+# Ensure your index.js or server.js starts an HTTP server listening on the $PORT variable.
+CMD [ "npm", "start" ]

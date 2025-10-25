@@ -3,11 +3,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { GoogleGenAI, Type } from '@google/genai';
 
-// --- Utility Functions (migrated from Netlify utils) ---
-
-/**
- * A robust helper to make API calls with automatic retries on overload errors.
- */
+// --- Utility Functions ---
 const callApiWithRetry = async (apiCall, maxRetries = 3, initialDelay = 1000) => {
     let lastError = null;
     for (let attempt = 0; attempt < maxRetries; attempt++) {
@@ -27,20 +23,13 @@ const callApiWithRetry = async (apiCall, maxRetries = 3, initialDelay = 1000) =>
     throw new Error("The AI model is temporarily unavailable due to high demand. Please try again later.");
 };
 
-/**
- * Helper to extract a JSON string from a markdown code block or plain text.
- */
 const extractJson = (text) => {
     const match = text.match(/```json\n([\s\S]*?)\n```/);
     if (match && match[1]) return match[1];
-    // Fallback for cases where the model doesn't use markdown
     const jsonMatch = text.match(/(\[[\s\S]*\]|\{[\s\S]*\})/);
     return jsonMatch ? jsonMatch[0] : text;
 };
 
-/**
- * A robust helper to process and parse responses from the Gemini API.
- */
 const processApiResponse = (response) => {
     const text = response.text;
     if (!text) {
@@ -79,11 +68,18 @@ const __dirname = path.dirname(__filename);
 if (!process.env.API_KEY) {
     throw new Error("API_KEY environment variable is not set.");
 }
-const ai = new GoogleGenAI({apiKey: process.env.API_KEY});
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+
+// --- Server Setup Constants ---
+const port = process.env.PORT || 8080;
+const staticDistPath = path.join(__dirname, 'dist');
 
 
-// --- API Routes ---
+// ====================================================================
+// --- API ROUTES (BACKEND LOGIC) ---
+// ====================================================================
 
+// 1. DEEP SEMANTIC SEARCH (OPTIMIZED FOR SPEED)
 app.post('/api/deepSemanticSearch', async (req, res) => {
     try {
         const { query, systematic } = req.body;
@@ -100,9 +96,9 @@ app.post('/api/deepSemanticSearch', async (req, res) => {
             4.  **TLDR Requirement:** Generate a new, one-sentence "Too Long; Didn't Read" (TLDR) summary for each paper.
             5.  Format your entire output as a single, valid JSON array of objects, starting with '[' and ending with ']'.
         `;
-        
+
         const result = await callApiWithRetry(() => ai.models.generateContent({
-            model: 'gemini-2.5-pro',
+            model: 'gemini-2.5-flash', // Optimized for speed
             contents: prompt,
             config: { tools: [{ googleSearch: {} }], temperature: 0.1 }
         }));
@@ -112,10 +108,11 @@ app.post('/api/deepSemanticSearch', async (req, res) => {
 
     } catch (error) {
         console.error("Error in deepSemanticSearch endpoint:", error);
-        returnError(res, 500, error.message || "An internal server error occurred.");
+        return returnError(res, 500, error.message || "An internal server error occurred.");
     }
 });
 
+// 2. COMPARE PAPERS (OPTIMIZED FOR ACCURACY & FIDELITY)
 app.post('/api/comparePapers', async (req, res) => {
     try {
         const { papers } = req.body;
@@ -124,23 +121,34 @@ app.post('/api/comparePapers', async (req, res) => {
         }
 
         const paperDetails = papers.map(p => `Paper ID: ${p.id}\nTitle: ${p.title}\nAuthors: ${p.authors.join(', ')}\nYear: ${p.year}\nAbstract: ${p.abstract}`).join('\n\n---\n\n');
+
+        const systemInstruction = `You are a research quality assurance agent. Your primary goal is VERIFIABLE KNOWLEDGE SYNTHESIS. You must perform structured data extraction first, using the source sentences provided as evidence. You must return a single, complete JSON object. Factual correctness overrides linguistic fluency.`;
+
         const prompt = `
-            You are a research assistant. Analyze and compare the following academic papers.
-            **Papers:**\n${paperDetails}\n
-            **Instructions:**
-            Perform a detailed comparison across: "Methodology", "Key Contribution", "Dataset/Evaluation", and "Limitations".
-            For each piece of extracted information, provide: 'value' (concise string), 'confidenceScore' (0.0-1.0), and 'sourceSentence' (exact supporting sentence from abstract).
-            After comparing, provide: 'overallSynthesis' (synthesis paragraph), 'researchGaps' (list of gaps), and 'hypothesis' (a novel research hypothesis).
-            Structure your entire response as a single JSON object.
+            **ACADEMIC COMPARISON TASK**
+            Analyze and systematically compare the ${papers.length} academic papers provided below.
+
+            **Papers for Analysis:**\n${paperDetails}\n
+            **INSTRUCTIONS (Strictly follow this order):**
+            1. **Extraction (Verifiable Fidelity):** Extract data points for the 4 requested aspects ("Methodology", "Key Contribution", "Dataset/Evaluation", and "Limitations"). For every value, you MUST provide the confidence score (0.0-1.0) and the exact sentence from the input abstract that supports your finding.
+            2. **Synthesis:** Once extraction is complete, generate the 'overallSynthesis', 'researchGaps', and 'hypothesis' fields.
+
+            **Output Requirement:** Structure your entire response STRICTLY according to the predefined JSON schema provided in the configuration.
         `;
+
         const responseSchema = { type: Type.OBJECT, properties: { comparison: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { aspect: { type: Type.STRING }, papers: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { paperId: { type: Type.STRING }, value: { type: Type.STRING }, confidenceScore: { type: Type.NUMBER }, sourceSentence: { type: Type.STRING } } } } } } }, overallSynthesis: { type: Type.STRING }, researchGaps: { type: Type.ARRAY, items: { type: Type.STRING } }, hypothesis: { type: Type.STRING } }, required: ["comparison", "overallSynthesis", "researchGaps", "hypothesis"] };
 
         const result = await callApiWithRetry(() => ai.models.generateContent({
             model: 'gemini-2.5-pro',
             contents: prompt,
-            config: { responseMimeType: "application/json", responseSchema: responseSchema, temperature: 0.2 }
+            config: {
+                responseMimeType: "application/json",
+                responseSchema: responseSchema,
+                temperature: 0.1,
+                systemInstruction: systemInstruction
+            }
         }));
-        
+
         const comparisonData = processApiResponse(result);
         res.status(200).json(comparisonData);
 
@@ -150,11 +158,12 @@ app.post('/api/comparePapers', async (req, res) => {
     }
 });
 
+// 3. GENERATE KNOWLEDGE GRAPH DATA (OPTIMIZED FOR STRUCTURE/SPEED)
 app.post('/api/generateKnowledgeGraphData', async (req, res) => {
     try {
         const { papers } = req.body;
         if (!papers || !Array.isArray(papers)) return returnError(res, 400, 'Papers array is required.');
-        
+
         const paperDetails = papers.map(p => `Paper ID ${p.id}: "${p.title}"\nAbstract: ${p.abstract}`).join('\n\n');
         const prompt = `
             You are a knowledge graph extractor. From the provided academic papers, extract key concepts and their relationships.
@@ -169,11 +178,11 @@ app.post('/api/generateKnowledgeGraphData', async (req, res) => {
         const responseSchema = { type: Type.OBJECT, properties: { nodes: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { id: { type: Type.STRING }, group: { type: Type.INTEGER }, label: { type: Type.STRING } } } }, links: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { source: { type: Type.STRING }, target: { type: Type.STRING }, value: { type: Type.NUMBER } } } } }, required: ["nodes", "links"] };
 
         const result = await callApiWithRetry(() => ai.models.generateContent({
-            model: 'gemini-2.5-pro',
+            model: 'gemini-2.5-flash',
             contents: prompt,
             config: { responseMimeType: "application/json", responseSchema: responseSchema, temperature: 0.3 }
         }));
-        
+
         const kgData = processApiResponse(result);
         res.status(200).json(kgData);
 
@@ -183,20 +192,21 @@ app.post('/api/generateKnowledgeGraphData', async (req, res) => {
     }
 });
 
+// 4. SUGGEST BROADER TOPICS (OPTIMIZED FOR SPEED/COST)
 app.post('/api/suggestBroaderTopics', async (req, res) => {
     try {
         const { query, paperTitles } = req.body;
         if (!query || !paperTitles) return returnError(res, 400, 'Query and paperTitles are required.');
-        
+
         const prompt = `Based on the initial search query "${query}" and the paper titles [${paperTitles}], suggest 3-5 related but broader research topics for exploration. Return your answer as a JSON array of strings.`;
         const responseSchema = { type: Type.ARRAY, items: { type: Type.STRING } };
-        
+
         const result = await callApiWithRetry(() => ai.models.generateContent({
             model: 'gemini-2.5-flash',
             contents: prompt,
             config: { responseMimeType: "application/json", responseSchema: responseSchema }
         }));
-        
+
         const topics = processApiResponse(result);
         res.status(200).json(topics);
 
@@ -206,15 +216,19 @@ app.post('/api/suggestBroaderTopics', async (req, res) => {
     }
 });
 
-// --- Static file serving and catch-all for client-side routing ---
-const staticDistPath = path.join(__dirname, 'dist');
+
+// ====================================================================
+// STATIC FILE SERVING AND CATCH-ALL
+// ====================================================================
 app.use(express.static(staticDistPath));
 
+// Catch-all route to handle client-side routing (crucial for React Router)
 app.get('*', (req, res) => {
+    // Use path.resolve for maximum compatibility across operating systems
     res.sendFile(path.resolve(staticDistPath, 'index.html'));
 });
 
-const port = process.env.PORT || 8080;
-app.listen(port, () => {
+// --- Server Listener ---
+app.listen(port, '0.0.0.0', () => { // Listen on '0.0.0.0' for Cloud Run deployment compatibility
     console.log(`Server listening on http://localhost:${port}`);
 });

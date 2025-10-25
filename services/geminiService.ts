@@ -14,12 +14,19 @@ const handleApiResponse = async (response: Response): Promise<any> => {
     const text = await response.text();
     if (!text) {
         if (!response.ok) {
-             throw new Error(`Request failed with status ${response.status}: The server returned an empty response.`);
+            throw new Error(`Request failed with status ${response.status}: The server returned an empty response.`);
         }
         return null; // Handle cases where an empty 2xx response is valid
     }
 
-    const data = JSON.parse(text);
+    let data;
+    try {
+        data = JSON.parse(text);
+    } catch (e) {
+        // This catches the JSON parsing failure that causes the blank screen
+        console.error("Failed to parse JSON from server response:", text);
+        throw new Error("Received malformed data from the server. Check server logs.");
+    }
 
     if (!response.ok) {
         const status = response.status;
