@@ -1,4 +1,0 @@
-# .gcloudignore
-node_modules
-dist
-.env
