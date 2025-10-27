@@ -1,16 +1,26 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { Paper, ComparisonResult, KnowledgeGraphData, SinglePaperAnalysisResult } from '../types';
 
-// IMPORTANT: This check is a safeguard.
-// The API key should be set in the environment variables.
-if (!process.env.API_KEY) {
-    throw new Error("API_KEY environment variable not set");
+const getAi = (): GoogleGenAI => {
+    // Check if the 'process' object and 'process.env' are available.
+    // This is crucial for browser environments where these are not standard.
+    if (typeof process === 'undefined' || !process.env) {
+        throw new Error(
+            "Configuration Error: The application is in an environment where `process.env` is not available. " +
+            "If deploying to a static host like Vercel, ensure your project is configured with a build step (e.g., using Vite or Next.js) " +
+            "to properly expose environment variables to the client-side."
+        );
+    }
+    
+    if (!process.env.API_KEY) {
+        throw new Error("Configuration Error: The API_KEY environment variable is not set. Please add your API_KEY to your project's environment variables in your hosting platform (e.g., Vercel).");
+    }
+    return new GoogleGenAI({ apiKey: process.env.API_KEY });
 }
-
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 export const generateSuggestions = async (query: string): Promise<string[]> => {
     try {
+        const ai = getAi();
         const prompt = `Based on the research paper search query "${query}", generate 3 related but different search queries that a researcher might find useful. Return the result as a JSON array of strings.`;
         
         const response = await ai.models.generateContent({
@@ -35,6 +45,7 @@ export const generateSuggestions = async (query: string): Promise<string[]> => {
 };
 
 export const generateComparison = async (papers: Paper[]): Promise<ComparisonResult> => {
+    const ai = getAi();
     const paperContext = papers.map(p => `
         PAPER ID: ${p.id}
         TITLE: ${p.title}
@@ -125,6 +136,7 @@ export const generateComparison = async (papers: Paper[]): Promise<ComparisonRes
 };
 
 export const generateKnowledgeGraph = async (papers: Paper[]): Promise<KnowledgeGraphData> => {
+     const ai = getAi();
      const paperContext = papers.map(p => `
         PAPER ID: ${p.id}
         TITLE: ${p.title}
@@ -187,6 +199,7 @@ export const generateKnowledgeGraph = async (papers: Paper[]): Promise<Knowledge
 };
 
 export const generateSinglePaperAnalysis = async (paper: Paper): Promise<SinglePaperAnalysisResult> => {
+    const ai = getAi();
     const prompt = `You are a research analyst AI. Provide a detailed analysis of the following research paper.
 
     PAPER:
